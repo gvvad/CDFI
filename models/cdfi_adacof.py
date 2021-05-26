@@ -13,6 +13,7 @@ class CDFI_adacof(torch.nn.Module):
         self.kernel_size = args.kernel_size
         self.kernel_pad = int(((args.kernel_size - 1) * args.dilation) / 2.0)
         self.dilation = args.dilation
+        self.training = False
 
         self.get_kernel = PrunedKernelEstimation(self.kernel_size)
 
@@ -412,50 +413,26 @@ class PrunedKernelEstimation(torch.nn.Module):
         )
 
     def forward(self, rfield0, rfield2):
-        tensorJoin = torch.cat([rfield0, rfield2], 1)
-
-        tensorConv1 = self.moduleConv1(tensorJoin)
-        tensorPool1 = self.modulePool1(tensorConv1)
-
-        tensorConv2 = self.moduleConv2(tensorPool1)
-        tensorPool2 = self.modulePool2(tensorConv2)
-
-        tensorConv3 = self.moduleConv3(tensorPool2)
-        tensorPool3 = self.modulePool3(tensorConv3)
-
-        tensorConv4 = self.moduleConv4(tensorPool3)
-        tensorPool4 = self.modulePool4(tensorConv4)
-
-        tensorConv5 = self.moduleConv5(tensorPool4)
-        tensorPool5 = self.modulePool5(tensorConv5)
-
-        tensorDeconv5 = self.moduleDeconv5(tensorPool5)
-        tensorUpsample5 = self.moduleUpsample5(tensorDeconv5)
+        tensorConv1 = self.moduleConv1(torch.cat([rfield0, rfield2], 1))
+        
+        tensorConv2 = self.moduleConv2(self.modulePool1(tensorConv1))
+        tensorConv3 = self.moduleConv3(self.modulePool2(tensorConv2))
+        tensorConv4 = self.moduleConv4(self.modulePool3(tensorConv3))
+        tensorConv5 = self.moduleConv5(self.modulePool4(tensorConv4))
+        tensorUpsample5 = self.moduleUpsample5(self.moduleDeconv5(self.modulePool5(tensorConv5)))
 
         tensorCombine = tensorUpsample5 + tensorConv5
+        tensorCombine = self.moduleUpsample4(self.moduleDeconv4(tensorCombine)) + tensorConv4
+        tensorCombine = self.moduleUpsample3(self.moduleDeconv3(tensorCombine)) + tensorConv3
+        tensorCombine = self.moduleUpsample2(self.moduleDeconv2(tensorCombine)) + tensorConv2
 
-        tensorDeconv4 = self.moduleDeconv4(tensorCombine)
-        tensorUpsample4 = self.moduleUpsample4(tensorDeconv4)
-
-        tensorCombine = tensorUpsample4 + tensorConv4
-
-        tensorDeconv3 = self.moduleDeconv3(tensorCombine)
-        tensorUpsample3 = self.moduleUpsample3(tensorDeconv3)
-
-        tensorCombine = tensorUpsample3 + tensorConv3
-
-        tensorDeconv2 = self.moduleDeconv2(tensorCombine)
-        tensorUpsample2 = self.moduleUpsample2(tensorDeconv2)
-
-        tensorCombine = tensorUpsample2 + tensorConv2
-
+        Occlusion = self.moduleOcclusion(tensorCombine)
         Weight1 = self.moduleWeight1(tensorCombine)
         Alpha1 = self.moduleAlpha1(tensorCombine)
         Beta1 = self.moduleBeta1(tensorCombine)
         Weight2 = self.moduleWeight2(tensorCombine)
         Alpha2 = self.moduleAlpha2(tensorCombine)
         Beta2 = self.moduleBeta2(tensorCombine)
-        Occlusion = self.moduleOcclusion(tensorCombine)
         Blend = self.moduleBlend(tensorCombine)
 
         featConv1 = self.module1by1_1(tensorConv1)
